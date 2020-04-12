@@ -1,0 +1,78 @@
+# Import Algorithm API
+import quantopian.algorithm as algo
+# Pipeline imports
+from quantopian.pipeline import Pipeline
+from quantopian.pipeline.data.psychsignal import stocktwits
+from quantopian.pipeline.factors import SimpleMovingAverage
+from quantopian.pipeline.experimental import QTradableStocksUS
+from quantopian.research import prices
+
+
+def initialize(context):
+    # Initialize algorithm parameters
+    context.day_count = 0
+    context.daily_message = "Day {}."
+    context.weekly_message = "Time to place some trades!"
+
+    # Schedule rebalance function
+    algo.schedule_function(
+        rebalance,
+        date_rule=algo.date_rules.week_start(),
+        time_rule=algo.time_rules.market_open()
+    )
+
+
+def before_trading_start(context, data):
+    # Execute any daily actions that need to happen
+    # before the start of a trading session
+    context.day_count += 1
+    log.info(context.daily_message, context.day_count)
+
+
+def rebalance(context, data):
+    # Execute rebalance logic
+    log.info(context.weekly_message)
+   
+def  make_pipeline():
+
+    base_universe = QTradableStocksUS()
+
+    sentiment_score = SimpleMovingAverage(
+        inputs=[stocktwits.bull_minus_bear],
+        window_length=3,
+    )
+
+    # Create filter for top 350 and bottom 350
+    # assets based on their sentiment scores
+    top_bottom_scores = (
+        sentiment_score.top(350) | sentiment_score.bottom(350)
+    )
+
+    return Pipeline(
+        columns={
+            'sentiment_score': sentiment_score,
+        },
+        # Set screen as the intersection between our filter
+        # and trading universe
+        screen=(
+            base_universe
+            & top_bottom_scores
+        )
+    )
+
+period_start = '2013-01-01'
+period_end = '2016-01-01'
+
+pipeline_output = run_pipeline(
+    make_pipeline(),
+    start_date=period_start,
+    end_date=period_end
+)
+
+asset_list = pipeline_output.index.levels[1].unique()
+
+asset_prices = prices(
+    asset_list,
+    start=period_start,
+    end=period_end
+)
